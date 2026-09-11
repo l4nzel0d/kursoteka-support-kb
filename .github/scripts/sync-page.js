@@ -199,28 +199,62 @@ function buildTags(topics) {
 /* Обращения к API BookStack                                           */
 /* ------------------------------------------------------------------ */
 
-async function api(path, init = {}) {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Token ${process.env.BOOKSTACK_API_ID}:${process.env.BOOKSTACK_API_SECRET}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      // LocalTunnel показывает браузеру страницу-предупреждение;
-      // этот заголовок отключает её для программных запросов.
-      'bypass-tunnel-reminder': 'true',
-      'User-Agent': 'kcs-bookstack-sync',
-      ...(init.headers || {}),
-    },
-  });
+/** Коды, при которых имеет смысл повторить запрос: сбой туннеля, а не ошибка данных. */
+const RETRIABLE_STATUSES = [502, 503, 504];
+const MAX_ATTEMPTS = 4;
 
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(
-      `${init.method || 'GET'} ${path} — ответ ${response.status} ${response.statusText}\n${text}`,
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function api(path, init = {}) {
+  const method = init.method || 'GET';
+  let lastError;
+
+  // BookStack опубликован через бесплатный туннель LocalTunnel: весь трафик идёт
+  // через одно соединение с машиной разработчика, и при его переустановлении
+  // сервис отвечает 502. Разовый сбой туннеля не должен ронять синхронизацию,
+  // поэтому запрос повторяется с нарастающей паузой.
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    let response;
+    try {
+      response = await fetch(`${baseUrl}${path}`, {
+        ...init,
+        headers: {
+          Authorization: `Token ${process.env.BOOKSTACK_API_ID}:${process.env.BOOKSTACK_API_SECRET}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          // LocalTunnel показывает браузеру страницу-предупреждение;
+          // этот заголовок отключает её для программных запросов.
+          'bypass-tunnel-reminder': 'true',
+          'User-Agent': 'kcs-bookstack-sync',
+          ...(init.headers || {}),
+        },
+      });
+    } catch (networkError) {
+      // Соединение не установилось: туннель в этот момент был недоступен.
+      lastError = new Error(`${method} ${path} — сбой соединения: ${networkError.message}`);
+      if (attempt === MAX_ATTEMPTS) break;
+      console.log(`Попытка ${attempt} не удалась (${networkError.message}), повтор...`);
+      await wait(attempt * 3000);
+      continue;
+    }
+
+    const text = await response.text();
+
+    if (response.ok) return text ? JSON.parse(text) : null;
+
+    lastError = new Error(
+      `${method} ${path} — ответ ${response.status} ${response.statusText}\n${text}`,
     );
+
+    // Ошибки самого BookStack (нет прав, нет книги, неверные данные) повторять
+    // бессмысленно — повтор даст тот же результат, а сборка будет идти дольше.
+    if (!RETRIABLE_STATUSES.includes(response.status) || attempt === MAX_ATTEMPTS) break;
+
+    console.log(`Попытка ${attempt} вернула ${response.status}, повтор...`);
+    await wait(attempt * 3000);
   }
-  return text ? JSON.parse(text) : null;
+
+  throw lastError;
 }
 
 /** Ищет ранее созданную статью по тегу github_issue. */

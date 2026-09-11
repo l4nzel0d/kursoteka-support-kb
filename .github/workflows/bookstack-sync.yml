@@ -2,9 +2,11 @@ name: Синхронизация базы знаний KCS
 
 # База знаний наполняется в момент решения обращения, а не постфактум:
 # любое изменение KCS-задачи немедленно отражается в статье BookStack.
+# Событие labeled позволяет перевести в базу знаний и уже существующую задачу:
+# достаточно навесить на неё метку knowledge вручную.
 on:
   issues:
-    types: [opened, edited, closed, reopened]
+    types: [opened, edited, closed, reopened, labeled]
 
 permissions:
   contents: read
