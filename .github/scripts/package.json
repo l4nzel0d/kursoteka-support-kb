@@ -1,0 +1,10 @@
+{
+  "name": "bookstack-sync",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Синхронизация задач GitHub со статьями базы знаний BookStack",
+  "dependencies": {
+    "marked": "^12.0.2"
+  }
+}

@@ -1,0 +1,54 @@
+name: Синхронизация базы знаний KCS
+
+# База знаний наполняется в момент решения обращения, а не постфактум:
+# любое изменение KCS-задачи немедленно отражается в статье BookStack.
+on:
+  issues:
+    types: [opened, edited, closed, reopened]
+
+permissions:
+  contents: read
+
+# Правки задачи могут идти подряд; последовательная обработка событий одной
+# задачи исключает одновременное создание двух статей.
+concurrency:
+  group: bookstack-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Создание или обновление статьи
+    runs-on: ubuntu-latest
+
+    # Статьёй становится не каждая задача, а только заведённая по KCS-шаблону:
+    # метку knowledge проставляет сам шаблон .github/ISSUE_TEMPLATE/kcs_issue.md.
+    if: contains(github.event.issue.labels.*.name, 'knowledge')
+
+    steps:
+      - name: Получение исходного кода
+        uses: actions/checkout@v4
+
+      - name: Установка Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Установка зависимостей
+        working-directory: .github/scripts
+        run: npm install
+
+      - name: Синхронизация статьи с BookStack
+        env:
+          BOOKSTACK_URL: ${{ secrets.BOOKSTACK_URL }}
+          BOOKSTACK_API_ID: ${{ secrets.BOOKSTACK_API_ID }}
+          BOOKSTACK_API_SECRET: ${{ secrets.BOOKSTACK_API_SECRET }}
+          BOOKSTACK_BOOK_ID: ${{ secrets.BOOKSTACK_BOOK_ID }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_STATE: ${{ github.event.issue.state }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          ISSUE_UPDATED_AT: ${{ github.event.issue.updated_at }}
+          EVENT_ACTION: ${{ github.event.action }}
+        run: node .github/scripts/sync-page.js

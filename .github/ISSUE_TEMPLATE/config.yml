@@ -1,0 +1,8 @@
+# Пустые задачи запрещены: любая задача заводится по шаблону,
+# иначе её содержимое невозможно превратить в статью базы знаний.
+blank_issues_enabled: false
+
+contact_links:
+  - name: 📚 База знаний технической поддержки
+    url: https://kursoteka-kb.loca.lt/books/baza-znanii-texniceskoi-podderzki
+    about: Прежде чем заводить задачу, поищите готовое решение в базе знаний
